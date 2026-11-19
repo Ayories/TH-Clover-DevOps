@@ -1,0 +1,43 @@
+name: Deploy staging
+on:
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        description: 'Verified GHCR image reference (ghcr.io/owner/repo@sha256:...)'
+        required: true
+      release_sha:
+        description: 'Full source commit SHA corresponding to verified image'
+        required: true
+permissions:
+  contents: read
+concurrency: staging-deploy
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate immutable image and SHA
+        env:
+          APP_IMAGE: ${{ inputs.image_digest }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          [[ "$APP_IMAGE" == "ghcr.io/${REPO,,}@sha256:"* ]] || exit 1
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+      - name: Copy deployment assets and execute
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          HOST: ${{ secrets.STAGING_HOST }}
+          USER: ${{ secrets.STAGING_USER }}
+          APP_IMAGE: ${{ inputs.image_digest }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          install -m 600 /dev/null key.pem
+          printf '%s\n' "$SSH_KEY" > key.pem
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+          scp -i key.pem infrastructure/docker-compose.yml scripts/{deploy,rollback,health-check}.sh "$USER@$HOST:/opt/th-clover/"
+          ssh -i key.pem "$USER@$HOST" "chmod +x /opt/th-clover/*.sh"
+          printf -v remote 'APP_IMAGE=%q RELEASE_SHA=%q /opt/th-clover/deploy.sh' "$APP_IMAGE" "$RELEASE_SHA"
+          ssh -i key.pem "$USER@$HOST" "$remote"

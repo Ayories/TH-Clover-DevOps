@@ -1,0 +1,5 @@
+/.github/workflows/ci.yml @REPLACE_DEVELOPMENT_GITHUB_USERNAME
+/.github/workflows/security.yml @REPLACE_QUALITY_GITHUB_USERNAME
+/.github/workflows/deploy.yml @REPLACE_PLATFORM_GITHUB_USERNAME
+/.github/workflows/monitoring.yml @REPLACE_OPERATIONS_GITHUB_USERNAME
+/.github/workflows/sprint-report.yml @REPLACE_BUSINESS_GITHUB_USERNAME

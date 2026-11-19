@@ -1,0 +1,9 @@
+route:
+  receiver: demo-webhook
+  group_wait: 10s
+  repeat_interval: 30m
+receivers:
+  - name: demo-webhook
+    webhook_configs:
+      - url: http://alert-receiver:5001/alerts
+        send_resolved: true

@@ -1,0 +1,10 @@
+groups:
+  - name: clover-availability
+    rules:
+      - alert: CloverAppDown
+        expr: up{job="clover"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: 'TH Clover application is unavailable'
