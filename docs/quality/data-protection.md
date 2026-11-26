@@ -20,7 +20,7 @@ says so, but nothing technically prevents real data being typed.
 | PostgreSQL logs | Possibly (statements quoted on errors) | CloudWatch | 14 days | Reduce statement logging |
 | Metrics | No: counts by route | Prometheus | 3 days | Keep |
 | Deployment log | No customer data | Host | Not limited | Rotate |
-| Alert and budget address | Yes (the operator) | CloudFormation parameter, SNS | Life of stack | Team mailbox |
+| Alert and budget address | Yes (the operator) | CloudFormation parameter, SNS, AWS Budget | Life of stack and budget | Team mailbox |
 | GitHub usernames, commit names and addresses, approvers | Yes (the team) | Public repository, Actions artifacts | Git: permanent; release manifest 90 days | Use GitHub no-reply addresses; a personal address is already in history |
 
 ## 3. UK GDPR principles (Article 5)
@@ -65,9 +65,9 @@ affected people where the risk is high.
   measure team members.
 - Collected: request counts, route name, status, duration, health state, error type.
 - Not collected: form values, headers, query strings, client addresses, session identifiers.
-- Trade-off: with no client address or failed-login event, an attack on the staff login cannot be
-  traced. A `auth_failed` event with a short-retention source address would be a proportionate
-  addition, stated in the privacy notice.
+- Trade-off: a rejected staff login is logged (`staff_login_failed`, path only), but with no client
+  address an attack on the staff login cannot be traced. A short-retention source address would be a
+  proportionate addition, stated in the privacy notice.
 - Access: CloudWatch readers limited to named AWS identities; Prometheus on loopback only.
 - Delivery records name who deployed. Use them for accountability, not for ranking people.
 

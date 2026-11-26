@@ -5,6 +5,10 @@ PostgreSQL) with automated testing, security checks, release, deployment and mon
 Parts of this repository were produced with AI assistance; the team members named below
 mark role areas, not authorship. **Do not enter real customer data.**
 
+**Status, 26 November 2026.** Staging and production were deployed on one host in AWS
+`eu-north-1` (Stockholm) and tested. Results and what was not tested are in
+[`docs/business/evaluation.md`](docs/business/evaluation.md).
+
 ## Roles
 | Area | Member | Main paths |
 |---|---|---|
@@ -22,11 +26,12 @@ mark role areas, not authorship. **Do not enter real customer data.**
 | `GET /api/requests` | List requests | Staff HTTP Basic |
 | `GET /staff`, `POST /staff/requests/<id>/status` | Staff list and status change | Staff HTTP Basic, CSRF on POST |
 | `GET /health` | Database and release check (200 or 503) | none |
-| `GET /metrics` | Prometheus counter `clover_http_requests_total` | none |
+| `GET /metrics` | Prometheus counter `clover_http_requests_total`, gauge `clover_database_up` | none |
 
 Stored per request: name (max 100), email (max 254), message (max 2000), status
 (`new`, `in_progress`, `resolved`) and creation time (UTC). Request logs are one JSON line
-on stdout holding method, route name, status and duration only: no personal data.
+on stdout holding method, route name, status and duration only: no personal data. A rejected
+staff login is also logged (`staff_login_failed`, path only, no username or password).
 
 ### Settings
 | Variable | Meaning |
@@ -37,7 +42,8 @@ on stdout holding method, route name, status and duration only: no personal data
 | `APP_ENV`, `RELEASE_SHA` | Reported by `/health` |
 
 ## Local development
-Compose definitions live in `infrastructure/`. From the repository root:
+Compose definitions live in `infrastructure/`. This local Docker environment has **not been
+run**. From the repository root:
 
 ```bash
 cp infrastructure/local.env.example infrastructure/local.env   # then edit the values
@@ -75,6 +81,9 @@ Tests need no network. To run them against a **disposable** PostgreSQL database 
 dropped), set `TEST_DATABASE_URL` and run `pytest -q tests/test_app.py`.
 
 ## Branching and review
+This is the **intended** process. It is not yet enforced: `main` is unprotected, there are no
+required reviewers, and pull requests #1 and #4 were merged without a review.
+
 - `main` is always releasable and is to be protected. No direct or force pushes.
 - Work on a short-lived branch from `main`: `feature/<topic>`, `fix/<topic>` or `docs/<topic>`.
   Aim to merge within a few days.
@@ -108,7 +117,8 @@ require a pull request with 1 approval, dismiss stale approvals, require the che
 
 Chain: issue → pull request (review, checks) → commit SHA → release run → image digest →
 deployment record. If no pull request or approval is found, the manifest records `null` or
-an empty list and the run shows a warning; it does not invent one.
+an empty list and the run shows a warning; it does not invent one. Pull requests #1 and #4 had
+no review, so no approver can be traced for the two releases made so far.
 
 To release, merge a pull request. To deploy, run **Deploy** with the SHA and digest from the
 manifest. Rollback redeploys the previous digest (see `scripts/rollback.sh`). Save the
@@ -121,9 +131,14 @@ the base image to digests, and Python packages to exact versions. Dependabot pro
 - HTTP only: Basic auth credentials and form data are not encrypted in transit. Access must
   stay restricted to the authorised network, with test accounts and synthetic data only.
   TLS is required before any real use.
-- One shared staff account: no individual staff identity, audit trail, lockout or rate limit.
+- One shared staff account: no individual staff identity, audit trail, lockout or rate limit
+  (rejected logins are logged).
 - Tables are created on first use; there are no schema migrations, so a schema change needs a
   migration plan before it can be deployed or rolled back safely.
 - No data retention or deletion function for personal data.
 - One gunicorn worker (8 threads) keeps metrics correct; counters reset on restart.
 - `/metrics` and `/health` are unauthenticated.
+- No required reviewers or branch protection; production approval is only the manual dispatch.
+- The application's database user is a PostgreSQL superuser. No off-host backups.
+- Not tested: automatic rollback on the live host, database restore, the database-down alert, the
+  host status-check alarm, a successful staff login on AWS and the scheduled evening stop.

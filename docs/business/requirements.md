@@ -34,7 +34,8 @@ manual handovers (Birmingham City University, 2026):
 ## Scope and assumptions
 
 - In scope: a proof of concept with development (local), staging and production on one EC2 host in
-  `eu-west-2`.
+  `eu-north-1` (Stockholm; the free-plan account could not use London). The local development
+  environment has not been run.
 - Out of scope: high availability, autoscaling, a custom domain, TLS certificates and real customer
   data. The service runs over plain HTTP, so only synthetic data may be entered.
 - The brief's targets are design and evaluation targets, not guaranteed service levels.
@@ -73,12 +74,14 @@ were added here to make each criterion testable.
 **MoSCoW rationale.** Musts protect access, accountability and the ability to release and recover.
 Shoulds strengthen quality and operations and are still planned for the proof of concept. REQ-08 is
 a Could because the service still works without it. "Won't (this time)": high availability,
-Kubernetes, TLS on a custom domain, automated database backup and restore.
+Kubernetes, TLS on a custom domain, automated database backup and restore (only a dump before each deployment exists, and restore is
+untested).
 
 **Honest limits on the criteria**
 
-- REQ-07: the stack launch, the Ansible run and the entry of secrets are started by a person. Report
-  these as manual steps rather than claiming a fully unattended build.
+- REQ-07: the stack launch, the Ansible run, the budget script, the email subscription confirmation
+  and the GitHub variable are manual steps. Report them rather than claiming a fully unattended
+  build. Secrets are generated on the host by the Ansible run.
 - REQ-08: development is local; staging shares one host with production, so the scheduled stop also
   stops production and monitoring. This is acceptable only for a proof of concept.
 
@@ -95,12 +98,15 @@ A work item is done only when all of these are true (Birmingham City University,
 6. It is documented briefly, including limitations.
 7. It is integrated into the relevant environment or workflow.
 
+As at 26 November no work item meets item 3: pull requests #1 and #4 had no review. The review rule
+is intended and is not yet enforced.
+
 ## Traceability to the brief
 
 | Brief target (Birmingham City University, 2026) | ID | Design element | Evidence required | Lead function |
 |---|---|---|---|---|
 | Access: no shared administrator accounts, least privilege | REQ-01 | Individual GitHub identities, named key-only host admin, OIDC role, root and password login disabled | Access matrix, denied-access tests | Quality & Security, Platform |
-| Traceability: change, review, test evidence, approval | REQ-02 | Pull requests, CI, image digest, environment approval, deployment log | One release traced end to end | Development |
+| Traceability: change, review, test evidence, approval | REQ-02 | Pull requests, CI, image digest, environment approval (intended; no required reviewers yet), deployment log | One release traced end to end | Development |
 | Deployment < 20 minutes | REQ-03 | GitHub Actions and SSM document `th-clover-deploy` | Timed runs | Platform |
 | Recovery < 10 minutes | REQ-04 | `rollback.sh`, automatic rollback on failed health check | Timed drills | Operations |
 | Testing before deployment or promotion | REQ-05 | pytest, scans, required status checks | Blocked failing change | Quality, Development |

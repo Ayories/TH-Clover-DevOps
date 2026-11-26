@@ -160,3 +160,30 @@ Official release archives from `github.com/prometheus`, each checked against the
 `alertmanager-0.35.1.linux-amd64.tar.gz` (42,637,642 bytes), fetched twice because the WSL temporary
 folder was cleared. `promtool` and `amtool` remain in WSL `~/bin`. `shellcheck-py` was added to
 `~/th-clover-venv`.
+
+## Update after deployment (26 November 2026)
+
+AI-assisted. No team member has reviewed this work. The text above is kept as written before
+integration. Raw evidence is held by the team outside the repository.
+
+**What happened since.**
+- Monitoring runs on the AWS host. The subscription was confirmed by a team member (operator).
+- Application-stop drill, two of three planned runs: alert firing +65 s and +78 s, SNS accepted +76 s
+  and +88 s, healthy 2 s after restore began. The run 1 email arrived within 112 s (reported by a team
+  member (operator)); the run 2 email was not checked.
+- Manual rollback drills: staging 6.8 s and 6.7 s, production 6.8 s, row counts unchanged.
+- `dora.py` ran on real logs (see `dora.md`); failure figures come from drills.
+- A `clover_database_up` gauge and a `CloverDatabaseDown` rule were added (three rules in total). The
+  rule is unit-tested only, never drilled.
+- The monitoring workflow passed on pull request #1.
+- Idle utilisation was measured (see `sustainability.md`).
+- Problem found: a drill script's input was swallowed by `docker compose exec`. It was fixed and rerun
+  and did not change the server.
+
+**Statements above that no longer apply.** "Nothing was run on AWS, a browser or a real server"; the
+containers have not been started; SNS publish and email delivery untested; "2 rules found" as the
+current count; "A database failure raises no alert"; rollback never run against real containers; no
+timing or project measurement exists; "The workflow has not run".
+
+**Still not tested.** Automatic rollback on the live host (drill 2), database restore, the database-down
+alert, the host status-check alarm, the scheduled stop and a third detection run.

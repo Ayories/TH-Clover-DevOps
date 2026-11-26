@@ -1,6 +1,7 @@
 # Sustainability and resource use
 
-AI-assisted (role area: Operations & Reliability). No utilisation has been measured yet.
+AI-assisted (role area: Operations & Reliability). Idle utilisation was measured on 26 November 2026
+(below). The scheduled stop has not yet been observed, so no run-hour reduction has been measured.
 
 ## Scheduled stop (REQ-08)
 
@@ -12,6 +13,7 @@ AI-assisted (role area: Operations & Reliability). No utilisation has been measu
   acceptable only for a proof of concept; with separate hosts only non-production would stop.
 - Stopped instances incur no instance-hour charge; the EBS volume is still charged.
 - Cost estimates: `docs/business/costs.md` (estimates, not bills).
+- State on 26 November 2026: the schedule is enabled; no stop has been observed yet.
 
 ### Recording the run-hour reduction
 
@@ -22,7 +24,7 @@ AI-assisted (role area: Operations & Reliability). No utilisation has been measu
 
 | Period | Hours in period | Hours running | Reduction % | Source | Status |
 |---|---|---|---|---|---|
-| | | | | | not yet measured |
+| | | | | | not measured |
 
 ## Right-sizing
 
@@ -37,6 +39,20 @@ AI-assisted (role area: Operations & Reliability). No utilisation has been measu
 Limits are ceilings, not measured use. The instance default is `t3.small` (2 GiB) with a swap file;
 `t3.micro` (1 GiB) is allowed but likely to swap. Grafana was left out to save memory. Decide on size
 only after measuring: if peak use stays well under 1 GiB with no swapping, test `t3.micro`.
+
+### Measured while idle, after testing (26 November 2026, `t3.small`)
+
+| Item | Value |
+|---|---|
+| CPU | 2 vCPU, load average 0.09 |
+| Memory | 787 MiB used of 1,905 MiB; no swap used |
+| Disk | 41% of 15 GiB |
+| Application containers | about 65 MiB each |
+| Database containers | about 31 MiB each |
+| Prometheus / Alertmanager | 53 MiB / 31 MiB |
+
+This is one idle sample, not peak use. It suggests a smaller instance might work; that has not been
+tested.
 
 ## Log and metric retention
 

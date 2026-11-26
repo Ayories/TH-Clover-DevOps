@@ -8,7 +8,7 @@ topic `th-clover-alerts`, which emails the subscriber. Behaviour and limits:
 |---|---|
 | `docker-compose.monitoring.yml` | `prom/prometheus:v3.13.5` (LTS line) and `prom/alertmanager:v0.35.1` |
 | `prometheus.yml` | Scrapes `staging-app:8000` and `production-app:8000`, labelled `environment` |
-| `alert-rules.yml` | `CloverAppDown` (production, critical), `CloverStagingDown` (warning, not sent) |
+| `alert-rules.yml` | `CloverAppDown` (production, critical), `CloverDatabaseDown` (production, critical; unit-tested only, never drilled), `CloverStagingDown` (warning, not sent) |
 | `alert-rules.test.yml` | `promtool test rules` cases (synthetic series) |
 | `alertmanager.yml.tmpl` | Alertmanager configuration with two placeholders |
 

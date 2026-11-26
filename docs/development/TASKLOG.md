@@ -183,3 +183,28 @@ other CODEOWNERS entries are commented out rather than guessed.
 
 **Limitations.** Branch protection is not configured by these files and, per the task board,
 `main` was unprotected. No peer review has happened yet.
+
+## Update after deployment (26 November 2026)
+
+AI-assisted. No team member has reviewed this work. The text above is kept as written before
+integration. Raw evidence is held by the team outside the repository.
+
+**What happened since.**
+- Merged to `main` through pull requests #1 and #4 (neither reviewed). #4 added logging of rejected
+  staff logins without credentials. A `clover_database_up` gauge was also added.
+- CI passed, including the PostgreSQL integration job and the container build and smoke test. The first
+  Security run failed on a libzstd1 vulnerability, fixed in the Dockerfile.
+- Two release runs (110 s each) published images that were deployed by digest to staging and
+  production. A synthetic form submission on production was read back from PostgreSQL.
+- Local tests: 146 at the first push, 147 after pull request #4.
+
+**Statements above that no longer apply.** "Nothing here has been committed, pushed or run on GitHub";
+PostgreSQL tests have not run; the image has never been built, run or scanned; neither workflow has run
+and the release steps are untested; 140 tests as the current count.
+
+**Still true.** No branch protection or peer review. The local Docker environment has not been run.
+
+**Differing records.** Task 1 says a 32 KiB body limit caused a 413 and the limit was raised to
+128 KiB. The [quality log](../quality/TASKLOG.md) says the failure was the test's own mistake. The two
+records differ and the repository history does not settle it. The current code caps requests at
+128 KiB.

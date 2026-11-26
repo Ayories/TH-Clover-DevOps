@@ -3,6 +3,7 @@
 > **Update 2026-11-26:** the AWS free-plan project is locked to Europe (Stockholm), `eu-north-1`, so the stack is
 > built there, not in London. The estimates below used London prices; read them as indicative only. The console
 > shows US$100.00 credit remaining until 26 May 2027 and states that a free-plan account is not charged.
+> Actual spend is not yet visible in billing, so none is stated.
 
 > **ESTIMATE only, not a bill or a quote.** AI-assisted (Agent 1), 26 November 2026. Role area:
 > Galen Kudwoli. Not reviewed by a team member. Prices accessed 26 November 2026. US dollars,
@@ -16,7 +17,8 @@
 
 ## Assumptions
 
-1. Region `eu-west-2` (London), on-demand Linux pricing, one instance, no Elastic IP.
+1. Price basis: `eu-west-2` (London) on-demand Linux pricing, one instance, no Elastic IP. This is
+   the basis of the estimate only; the stack runs in `eu-north-1`.
 2. A month is 730 hours when running continuously.
 3. Shutdown case: 10 hours a day, 5 days a week, 52/12 weeks, about **217 hours**. The schedule only
    **stops** the instance (weekdays 19:00 London). This case assumes someone starts it at about 09:00
@@ -26,7 +28,7 @@
    started again (Amazon Web Services, 2026a), and no address charge is assumed while stopped.
 6. At most 1 GB of logs a month, 14-day retention, one CloudWatch alarm.
 7. Under 1,000 alert emails and 100 GB of internet data out a month.
-8. CPU credits in `standard` mode (as drafted in the template), so no surplus-credit charges.
+8. CPU credits in `standard` mode (as set in the template), so no surplus-credit charges.
 9. No snapshots, load balancer, NAT gateway, custom domain or custom CloudWatch metrics.
 10. The GitHub repository is public and uses standard GitHub-hosted runners.
 
@@ -72,12 +74,13 @@ running (28 November to 4 December) is about **$5.15** for `t3.small`.
 
 ## Instance size
 
-The drafted container memory limits are 256 MB for each of two applications and two PostgreSQL
+The container memory limits are 256 MB for each of two applications and two PostgreSQL
 databases, plus 256 MB for Prometheus and 64 MB for Alertmanager: 1,344 MB in total, before Ubuntu,
 Docker and the SSM agent. `t3.micro` has 1 GiB; `t3.small` has 2 GiB (Amazon Web Services, 2026n).
 Limits are ceilings rather than measured use, but a 1 GiB host risks swapping or killed containers
-during a deployment or demonstration. The extra cost is about $2.56 a month with shutdown. Memory use
-should be measured after deployment.
+during a deployment or demonstration. The extra cost is about $2.56 a month with shutdown. Measured on
+the deployed `t3.small`, idle after testing: 787 MiB of 1,905 MiB used. Peak use was not measured and
+a smaller instance was not tested.
 
 **CPU caveat.** Baseline is 20% per vCPU for `t3.small` (Amazon Web Services, 2026n). T3 instances
 get no launch credits (Amazon Web Services, 2026o), so in `standard` mode a new instance is held near
@@ -87,7 +90,8 @@ where sustained excess use is billed at $0.05 per vCPU-hour (Amazon Web Services
 
 ## Free Tier: check the account type first
 
-The rules depend on when the AWS account was created. We have not checked the team's account.
+The rules depend on when the AWS account was created. The account used is on the free plan, which
+locked it to `eu-north-1`.
 
 | | Created on or after 15 July 2025 | Created before 15 July 2025 |
 |---|---|---|
@@ -100,16 +104,16 @@ The rules depend on when the AWS account was created. We have not checked the te
 
 Also for new accounts: setting up a cost budget is one of the activities that earns $20 (Amazon Web
 Services, 2026s), and a free plan restricts some services (Amazon Web Services, 2026q), so confirm
-that every service above is available before creating the stack. The legacy EBS allowance was not
+that every service above is available before creating the stack. (In practice London was not
+available, and CloudFormation in `eu-north-1` rejected the budget resource.) The legacy EBS allowance was not
 confirmed by the pages we could read, so it is not relied on.
 
 ## Budget alert
 
 Use **$15**. It leaves room above the $7.68 expected for evening demonstrations, while a month of
-24/7 running ($22.36) triggers the forecast alert. The drafted template defaults to $20; pass
-`MonthlyBudgetUsd=15` when creating the stack, or change the default. Keep credits excluded from the
-budget calculation (the draft does) so that usage stays visible. A budget **warns**; it does not stop
-spending.
+24/7 running ($22.36) triggers the forecast alert. The budget `th-clover-monthly` (US$15) was created
+with `infrastructure/budget.sh`, not by the stack. Credits are excluded from the budget calculation
+(the script does this) so that usage stays visible. A budget **warns**; it does not stop spending.
 
 ## Operating consequences
 

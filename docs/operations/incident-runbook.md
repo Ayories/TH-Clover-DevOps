@@ -1,7 +1,9 @@
 # Incident runbook
 
-AI-assisted (role area: Operations & Reliability). **Not yet exercised on the real host**; correct it
-after the first drill. Responder: the member holding the Operations role (Nana Owusu) and the named
+AI-assisted (role area: Operations & Reliability). The application-stop and manual rollback drills
+have been run on the real host; **the runbook as a whole has not been exercised as an incident**, and
+the database, host-failure and restore paths are untested.
+Responder: the member holding the Operations role (Nana Owusu) and the named
 holder of the `cloveradmin` key. A team member must agree this assignment.
 
 Write down UTC times as you go: noticed, acknowledged, action taken, healthy again.
@@ -11,10 +13,11 @@ Write down UTC times as you go: noticed, acknowledged, action taken, healthy aga
 | Signal | Meaning |
 |---|---|
 | Email `TH-CLOVER FIRING CloverAppDown production` | Production app has not answered for over a minute |
+| Email `TH-CLOVER FIRING CloverDatabaseDown production` | Production app has not reached its database for over a minute (rule unit-tested only, never drilled) |
 | CloudWatch alarm email `th-clover-status-check-failed` | Host or host network problem |
 | Deploy workflow fails with exit code 10 | Bad release, already rolled back |
 | Deploy workflow fails with exit code 11 | Bad release, **not** restored: treat as an outage |
-| A user reports a fault | May be a database fault: no alert exists for that yet |
+| A user reports a fault | May be a fault no alert covers: check `/health` and the logs |
 
 ## 2. Triage (aim: decide within 3 minutes)
 
