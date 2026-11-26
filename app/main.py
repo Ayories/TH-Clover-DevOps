@@ -241,6 +241,10 @@ def staff_required(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
         if not _staff_credentials_ok():
+            # Record rejected credentials (not the first, empty browser request). The username
+            # and password are never logged, because either may contain personal data.
+            if request.authorization is not None:
+                log_event("staff_login_failed", logging.WARNING, path=request.path)
             abort(401)
         return view(*args, **kwargs)
 
