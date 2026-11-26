@@ -93,6 +93,8 @@
           - "'passwordauthentication no' in sshd_effective.stdout_lines"
           - "'kbdinteractiveauthentication no' in sshd_effective.stdout_lines"
           - "('allowusers ' ~ admin_user) in sshd_effective.stdout_lines"
+          - "'x11forwarding no' in sshd_effective.stdout_lines"
+          - "'maxauthtries 3' in sshd_effective.stdout_lines"
 
     # ------------------------------------------------------------- updates and memory
     - name: Enable automatic security updates
