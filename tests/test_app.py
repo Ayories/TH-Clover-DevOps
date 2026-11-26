@@ -364,3 +364,23 @@ def test_seed_is_idempotent_and_synthetic(app):
         assert seed() == 0
     assert count_rows(app) == len(SYNTHETIC_REQUESTS)
     assert all(email.endswith("@example.com") for _, email, _, _ in SYNTHETIC_REQUESTS)
+
+
+def test_failed_staff_login_is_logged_without_credentials(client):
+    lines = []
+
+    class Capture(logging.Handler):
+        def emit(self, record):
+            lines.append(record.getMessage())
+
+    handler = Capture()
+    logging.getLogger("clover").addHandler(handler)
+    try:
+        assert client.get("/staff").status_code == 401  # no credentials: not an attempt
+        assert not any("staff_login_failed" in line for line in lines)
+        assert client.get("/staff", auth=("intruder-name", "guess-123")).status_code == 401
+    finally:
+        logging.getLogger("clover").removeHandler(handler)
+    failed = [line for line in lines if "staff_login_failed" in line]
+    assert len(failed) == 1
+    assert "intruder-name" not in failed[0] and "guess-123" not in failed[0]
