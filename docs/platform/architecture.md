@@ -1,8 +1,9 @@
 # TH-CLOVER architecture (AI-assisted)
 
 Role area: Platform and Infrastructure (Jesutofunmi Jinadu). The names below mark who owns each area,
-not who wrote the files. This describes the version-controlled design. Nothing here is evidence that it
-has been deployed.
+not who wrote the files. This describes the version-controlled design. It was deployed to AWS
+`eu-north-1` on 26 November 2026. Pull request review and an enforced production approval are intended
+and are **not yet in place**.
 
 ## End-to-end view
 
@@ -18,16 +19,16 @@ flowchart TB
 
     subgraph github["GitHub - Ayories/TH-Clover-DevOps"]
         backlog["Issues and backlog [BUS]"]
-        repo["Repository: pull request + review<br/>app, tests, IaC, config [DEV]"]
+        repo["Repository: pull request (review intended, not enforced)<br/>app, tests, IaC, config [DEV]"]
         ci["CI: ruff, pytest, image build [DEV]"]
         gates["Security gates: Gitleaks, Trivy,<br/>security tests [SEC]"]
         release["Release on main: build, scan, push [DEV]"]
-        deploywf["Deploy workflow: verify commit and digest,<br/>environment approval [PLAT]"]
+        deploywf["Deploy workflow: verify commit and digest,<br/>environment approval (no required reviewers yet) [PLAT]"]
     end
 
     ghcr[("GHCR image<br/>deployed by digest [DEV]")]
 
-    subgraph aws["AWS eu-north-1 - created by CloudFormation [PLAT]"]
+    subgraph aws["AWS eu-north-1 - created by CloudFormation, budget by script [PLAT]"]
         oidc["IAM role trusted through<br/>GitHub OIDC, main only [SEC]"]
         ssm["SSM document th-clover-deploy<br/>validated parameters [PLAT]"]
         scheduler["EventBridge Scheduler<br/>weekday evening stop [OPS]"]
@@ -76,15 +77,15 @@ flowchart TB
     sns --> email
     scheduler -->|"stop instance"| ec2
     budget --> email
-    email -.->|"feedback: incident, action, new work item"| backlog
-    cwlogs -.->|"investigation"| backlog
+    email -.->|"feedback (planned): incident, action, new work item"| backlog
+    cwlogs -.->|"investigation (planned feedback)"| backlog
 ```
 
 ## What creates what
 
 | Layer | Tool and file | Creates |
 |---|---|---|
-| AWS resources | CloudFormation, `infrastructure/cloudformation/th-clover.yml` | Security group, EC2, `cloveradmin` (cloud-init), IAM roles, log groups, SNS, alarm, schedule, budget, SSM document, OIDC trust |
+| AWS resources | CloudFormation, `infrastructure/cloudformation/th-clover.yml` | Security group, EC2, `cloveradmin` (cloud-init), IAM roles, log groups, SNS, alarm, schedule, SSM document, OIDC trust. The budget is created by `infrastructure/budget.sh` |
 | Linux configuration | Ansible, `infrastructure/ansible/site.yml` | Packages, SSH hardening, automatic security updates, swap, directories, per-environment secrets, scripts, monitoring |
 | Application runtime | Compose, `infrastructure/docker-compose*.yml` | `app` and `db` per environment; same definition for development, staging, production |
 | Release to an environment | `.github/workflows/deploy.yml` + `scripts/deploy.sh` | A new `release.env`, containers on the new digest, a JSON line in `deployments.log` |
@@ -96,7 +97,7 @@ flowchart TB
 | One EC2 host for staging, production and monitoring | Proportionate cost for a proof of concept | No high availability; staging load can affect production; monitoring dies with the host (partly covered by the CloudWatch status-check alarm) |
 | CI/CD uses OIDC + SSM, never SSH | No stored AWS keys or SSH keys in GitHub; port 22 closed to GitHub | `deploy.sh` runs as root through SSM, so the document's parameter validation and the script's own validation matter |
 | OIDC subject limited to `main` with repository IDs | The repository was created after 15 July 2026, so GitHub issues the immutable subject format | The parameter must be updated if the repository is renamed or recreated |
-| Approval in a separate workflow job | A job with `environment:` changes the OIDC subject; approval is kept, trust stays `ref:refs/heads/main` | The approval only exists if the operator adds required reviewers to the GitHub environment |
+| Approval in a separate workflow job | A job with `environment:` changes the OIDC subject; approval is kept, trust stays `ref:refs/heads/main` | The approval only exists with required reviewers on the GitHub environment. None are set, so production approval is only the manual dispatch |
 | Deploy by image digest | The tested image is exactly what runs | The operator copies the digest from the release run |
 | Secrets generated on the host | Never in Git, CI or the Ansible controller | Plain files readable by root; no central rotation (AWS Secrets Manager would be the next step) |
 | Database backup before each deploy | Recovery point if a release damages data | Stored on the same disk; image rollback does not reverse database schema changes |

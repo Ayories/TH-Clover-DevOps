@@ -177,3 +177,31 @@ measured. Rollback does not reverse database changes. Backups sit on the same di
 ## Problem found at deployment: budget resource (2026-11-26)
 
 CloudFormation in eu-north-1 rejected `AWS::Budgets::Budget` (Unrecognized resource types). The budget moved to `infrastructure/budget.sh`, run once in CloudShell: `bash infrastructure/budget.sh <alert-email> 15`. The `MonthlyBudgetUsd` stack parameter no longer exists.
+
+## Update after deployment (26 November 2026)
+
+AI-assisted. No team member has reviewed this work. The text above is kept as written before
+integration. Raw evidence is held by the team outside the repository.
+
+**What happened since.**
+- Stack `th-clover` reached `CREATE_COMPLETE` (14 resources) in `eu-north-1`; a `t3.small` Ubuntu
+  24.04 host. The budget is created by script (above). The cfn-lint output above, for `eu-west-2`,
+  predates the move.
+- Ansible: first run `ok=30 changed=18 failed=0` (95 s); a second run applied a hardening change
+  (`changed=2`, 42 s); the third was `ok=25 changed=0` (34 s).
+- SSH: host key checked against the console output; key login worked; root and password-only logins
+  were refused. The first check showed X11 forwarding on and six authentication tries; both were fixed
+  through Ansible.
+- Deployment through OIDC and the SSM document: seven pipeline deployments, all successful, 42 to 58 s
+  from dispatch to complete.
+- The instance role now has an explicit Deny on reading SSM parameters.
+- Problem found: an Ansible wrapper script broke on a space in a local path. It was fixed and rerun and
+  did not change the server.
+
+**Statements above that no longer apply.** "Nothing was run against AWS, a browser or a server"; the
+stack has never been created; the playbook has not run against any host; idempotence is unproven;
+neither the workflow nor the script has run for real; deployment time is not measured.
+
+**Still not tested.** Local Docker development environment, automatic rollback on the live host,
+database restore, the scheduled stop and recovery after stop/start. No required reviewers are set on the
+GitHub environments.

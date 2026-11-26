@@ -84,3 +84,19 @@
 - **Problems & solutions:** `gh issue create --label` needs an existing label; now created first.
 - **Limitations:** The workflow has not run on GitHub. It lists up to 100 issues of each state, not
   only the last sprint, and includes earlier reports.
+
+## Update after deployment (26 November 2026)
+
+AI-assisted. No team member has reviewed this work. The text above is kept as written before
+integration.
+
+**What happened since.** The files were merged to `main` through pull request #1 (no review). The
+stack was created in `eu-north-1`, not `eu-west-2`; London remains only the price basis of the cost
+estimate. The account is on the AWS free plan. The US$15 budget was created by
+`infrastructure/budget.sh`. Targets were tested and `evaluation.md` now holds results. Idle memory use
+was measured (787 MiB of 1,905 MiB).
+
+**Statements above that no longer apply.** "Nothing was committed, pushed or created in AWS or GitHub";
+"No target has been measured"; "Account type unknown"; memory not measured. Usage cost is still not
+measured: actual spend is not yet visible in billing. `sprint-report.yml` is now on `main`, but no run
+of it is recorded.

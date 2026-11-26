@@ -1,7 +1,8 @@
 # Recovery and detection drills
 
-AI-assisted (role area: Operations & Reliability). **No drill has been run.** Fill the tables only from
-real runs, and keep the raw output in `evidence/operations/`.
+AI-assisted (role area: Operations & Reliability). On 26 November 2026 drill 1 was run twice (of three
+planned) and drill 3 three times; **drill 2 has not been run**. Fill the tables only from real runs,
+and keep the raw output in `evidence/operations/` (held by the team outside the repository).
 
 Use synthetic data only. Tell the team before a drill: drill 1 takes production down for a few minutes.
 
@@ -37,9 +38,11 @@ Wait at least 5 minutes (for the `RESOLVED` email) before another run. Three run
 
 | Run | Date | T0 (UTC) | Alert firing (s) | SNS accepted (s) | Email received (s) | App healthy after restore (s) | Pass (< 300 s to email) |
 |---|---|---|---|---|---|---|---|
-| 1 | not yet run | | | | | | |
-| 2 | not yet run | | | | | | |
-| 3 | not yet run | | | | | | |
+| 1 | 2026-11-26 | 07:46:08 | 65 | 76 | within 112 s (07:47 minute) | 2 | Yes |
+| 2 | 2026-11-26 | 08:18:12 | 78 | 88 | not checked | 2 | Not established: email not checked |
+| 3 | not run | | | | | | |
+
+The run 1 email time was reported by a team member (operator); no headers or screenshot were kept.
 
 ## Drill 2: bad release, automatic rollback (staging, REQ-04)
 
@@ -74,9 +77,12 @@ from the package afterwards.
 
 Failure injected = the `started` time on the `deploy` line; recovered = its `finished` time.
 
+**Not run.** Automatic rollback has not been tested on the live host; only a simulation with stub
+`docker` and `curl` exists (29 of 29 checks passed).
+
 | Run | Date | Exit code | Deploy line seconds (inject to recovered) | Rollback line seconds | Previous SHA healthy | Pass (< 600 s) |
 |---|---|---|---|---|---|---|
-| 1 | not yet run | | | | | |
+| 1 | not run | | | | | |
 
 ## Drill 3: manual rollback (REQ-04)
 
@@ -106,12 +112,15 @@ notice a fault and decide; state this with the result.
 
 | Run | Date | Environment | From SHA | To SHA | Seconds (log) | Row count before / after | Pass (< 600 s) |
 |---|---|---|---|---|---|---|---|
-| 1 | not yet run | | | | | | |
-| 2 | not yet run | | | | | | |
-| 3 | not yet run | | | | | | |
+| 1 | 2026-11-26 | staging | `36c9a46` | `291ac6b` | 7 (6.8 wall) | 3 / 3 | Yes |
+| 2 | 2026-11-26 | staging | `36c9a46` | `291ac6b` | 7 (6.7 wall) | 3 / 3 | Yes |
+| 3 | 2026-11-26 | production | `36c9a46` | `291ac6b` | 7 (6.8 wall) | 4 / 4 | Yes |
+
+Each run was followed by a redeploy of `36c9a46`. Rollback restores the application image only;
+database restore was not tested.
 
 ## Evidence to keep
 
 Terminal output of each drill, the `deployments.log` and drill log lines, the firing and resolved
 emails (hide addresses), a screenshot of the Prometheus alert, and the CloudWatch log lines from the
-period.
+period. The firing and resolved emails were not captured for the 26 November runs.

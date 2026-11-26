@@ -1,15 +1,16 @@
 # TH-CLOVER setup and deployment (AI-assisted)
 
-Role area: Platform and Infrastructure (Jesutofunmi Jinadu). These steps have been checked statically
-only. They have not been run against AWS by the author of this document. Creating the stack costs
-money: get the team's approval first.
+Role area: Platform and Infrastructure (Jesutofunmi Jinadu). On 26 November 2026 a stack was created in
+`eu-north-1`, the host was configured with Ansible, SSH was checked and releases were deployed through
+the pipeline. Not run: local development (section 0), secret rotation, stop/start, a successful staff
+login on AWS and removal. Creating the stack can cost money: get the team's approval first.
 
 Placeholders: `<IP>` current public IP of the instance, `<repo>` your clone of the repository.
 In WSL a Windows clone is under `/mnt/c/...`.
 
 ## 0. Local development (no AWS)
 
-From the repository root, with Docker available:
+This has **not been run**. From the repository root, with Docker available:
 
 ```bash
 cp infrastructure/local.env.example infrastructure/local.env      # edit the values
@@ -24,7 +25,7 @@ Open `http://127.0.0.1:8000/`. Stop with `Ctrl+C`, then the same command ending 
 
 ```bash
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
-ssh-keygen -t ed25519 -f ~/.ssh/th_clover_ed25519 -C cloveradmin@th-clover    # set a passphrase
+ssh-keygen -t ed25519 -f ~/.ssh/th_clover_ed25519 -C cloveradmin@th-clover    # recommended: set a passphrase
 cat ~/.ssh/th_clover_ed25519.pub        # this PUBLIC line goes into CloudFormation
 eval "$(ssh-agent -s)" && ssh-add ~/.ssh/th_clover_ed25519
 ```
@@ -57,7 +58,7 @@ gh api repos/Ayories/TH-Clover-DevOps/actions/oidc/customization/sub
 |---|---|---|
 | `SshPublicKey` | the whole `.pub` line | yes |
 | `AllowedCidr` | `x.x.x.x/32` | yes |
-| `AlertEmail` | address that receives alerts and budget warnings | yes |
+| `AlertEmail` | address that receives alerts (the budget is created separately, see the end of this page) | yes |
 | `CreateGitHubOidcProvider` | `false` only if the provider exists | check |
 | `InstanceType` | `t3.small` (default) or `t3.micro` | default |
 | `StopScheduleState` | `ENABLED`; `DISABLED` for an evening demonstration | default |
@@ -109,13 +110,14 @@ On the server:
 
 ```bash
 sudo sshd -t && echo "configuration OK"
-sudo sshd -T | grep -Ei '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|pubkeyauthentication|allowusers) '
+sudo sshd -T | grep -Ei '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|pubkeyauthentication|allowusers|x11forwarding|maxauthtries) '
 sudo passwd -S root                 # expect "L" (locked)
 ls /etc/ssh/sshd_config.d/
 ```
 
 Expected: `permitrootlogin no`, `passwordauthentication no`, `kbdinteractiveauthentication no`,
-`pubkeyauthentication yes`, `allowusers cloveradmin`.
+`pubkeyauthentication yes`, `allowusers cloveradmin`, `x11forwarding no`, `maxauthtries 3`.
+Root and password-only logins were refused when tested; the `ubuntu` login below was not tried.
 
 From your own computer, these must all FAIL with `Permission denied (publickey)`:
 
@@ -136,7 +138,9 @@ shows the refused attempts. Take screenshots of both sides.
 1. Repository > Settings > Secrets and variables > Actions > **Variables** > new repository variable
    `AWS_DEPLOY_ROLE_ARN` = the `DeployRoleArn` output. It is not a secret and no access key is needed.
 2. Settings > Environments: create `staging` and `production`; add a **required reviewer** to
-   `production` and limit its deployment branches to `main`.
+   `production` and limit its deployment branches to `main`. This is intended and **not yet done**: no
+   required reviewer is set (it needs the repository administrator), so production approval is only the
+   manual dispatch. `main` is also unprotected.
 3. Remove any old `STAGING_SSH_KEY`, `STAGING_HOST`, `STAGING_USER` secrets.
 4. Let the host pull the image. A new GHCR package is private. Either make the package public
    (package settings > visibility; the image must contain no secrets), or on the host run
@@ -154,6 +158,9 @@ shows the refused attempts. Take screenshots of both sides.
    `"version"` equal to the commit SHA. Then deploy the same digest to production.
 5. Staff password (generated on the host, one per environment):
    `sudo cat /opt/th-clover/staging/staff-password.txt` (user `staff`). Store it in a password manager.
+   A successful staff login has not yet been tested on AWS. The site is HTTP only, so use an SSH tunnel,
+   for example `ssh -i ~/.ssh/th_clover_ed25519 -L 8000:127.0.0.1:80 cloveradmin@<IP>` and then open
+   `http://localhost:8000/staff` (use remote port 8080 for staging).
 
 The same deployment can be started by hand on the host, which is useful for diagnosis:
 
@@ -188,7 +195,8 @@ so agree it as a team first.
 
 ## 10. Stopping, starting and changing
 
-- The schedule stops the instance Monday to Friday at 19:00 London time. Start it in the EC2 console.
+- The schedule stops the instance Monday to Friday at 19:00 London time (enabled; no stop observed yet,
+  and recovery after a stop/start is untested). Start it in the EC2 console.
   The public IP changes: update `inventory.ini` and your bookmarks. Containers restart by themselves
   and the deploy workflow finds the instance by its tag.
 - Your own IP changed? CloudFormation > stack `th-clover` > Update > use existing template > new

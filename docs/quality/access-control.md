@@ -1,7 +1,8 @@
 # Access control, secrets and rotation (REQ-01)
 
 AI-assisted (Agent 4, 2026-11-26), role area Quality and Security. Not yet reviewed by a team
-member. "Defined" means written in a file; "set" means observed. No AWS or host access exists yet.
+member. "Defined" means written in a file; "set" means observed. States were updated after deployment
+on 26 November.
 
 ## 1. Identities and authentication
 
@@ -9,13 +10,13 @@ member. "Defined" means written in a file; "set" means observed. No AWS or host 
 |---|---|---|---|
 | GitHub: `Ayories` (admin) and four collaborators with write | People | Individual GitHub login; 2FA must be confirmed by each holder | Set (`github-settings-readonly.txt`) |
 | AWS operator | Person creating the stack | Individual AWS identity with MFA, not the root user | Required; not verified |
-| `cloveradmin` | Host administration | ed25519 key only; root and password login disabled | Defined |
-| `staff` (per environment) | Support staff | HTTP Basic, scrypt hash, **over HTTP** | Defined; app behaviour tested |
-| GitHub Actions `GITHUB_TOKEN` | Workflows | Short-lived token per job | Defined |
-| Deploy role | `deploy` job on `main` | OIDC web identity; no stored keys | Defined |
-| Instance role | EC2 host **and every container on it** | IMDSv2 temporary credentials | Defined |
-| Scheduler role | EventBridge Scheduler | Service principal limited to this account | Defined |
-| PostgreSQL `POSTGRES_USER` | Application, backups | Generated password, private Compose network | Defined |
+| `cloveradmin` | Host administration | ed25519 key only; root and password login disabled | Set (root and password-only logins refused) |
+| `staff` (per environment) | Support staff | HTTP Basic, scrypt hash, **over HTTP** | Set; refusals checked live; successful login not tested on AWS |
+| GitHub Actions `GITHUB_TOKEN` | Workflows | Short-lived token per job | Set (workflows run) |
+| Deploy role | `deploy` job on `main` | OIDC web identity; no stored keys | Set (deployments succeeded) |
+| Instance role | EC2 host **and every container on it** | IMDSv2 temporary credentials | Set (logs and alerts delivered) |
+| Scheduler role | EventBridge Scheduler | Service principal limited to this account | Created; no stop observed |
+| PostgreSQL `POSTGRES_USER` | Application, backups | Generated password, private Compose network | Set |
 | Public | Customers | None; CSRF token on the form | Tested |
 
 `cloveradmin` and `staff` are role accounts, not personal ones. They meet "no shared administrator
@@ -30,16 +31,16 @@ Y = intended, - = not intended, (!) = broader than needed (see
 | Action | Repo admin | Collaborator | CI jobs | Deploy role | Host admin | Instance role | App DB user | Staff | Public |
 |---|---|---|---|---|---|---|---|---|---|
 | Read source | Y | Y | Y | - | Y | - | - | Y (public repo) | Y (public repo) |
-| Change `main` | Y, by pull request | Y, by pull request (!) today direct push is possible | - | - | - | - | - | - | - |
+| Change `main` | Y, by pull request (intended) | Y, by pull request (intended) (!) today direct push is possible | - | - | - | - | - | - | - |
 | Change repository settings | Y | - | - | - | - | - | - | - | - |
 | Publish image to GHCR | - | - | `publish` job only (`packages: write`) | - | - | - | - | - | - |
-| Approve production | Named reviewer | Named reviewer | - | - | - | - | - | - | - |
+| Approve production | Named reviewer (intended; none set) | Named reviewer (intended; none set) | - | - | - | - | - | - | - |
 | Run the deploy document | via workflow | via workflow (!) | - | Y, that document and instance | - | - | - | - | - |
 | Arbitrary command on the host | - | - | - | - | Y (sudo, no password) (!) | - | - | - | - |
 | Read host secret files | - | - | - | - | Y | - | - | - | - |
 | Write application logs | - | - | - | - | - | Y, `/th-clover/*` | - | - | - |
 | Publish alerts | - | - | - | - | - | Y, one topic | - | - | - |
-| Read SSM parameters | - | - | - | - | - | Y, all (!) | - | - | - |
+| Read SSM parameters | - | - | - | - | - | - (explicit Deny; not tested live) | - | - | - |
 | Read command output | - | - | - | Y, any command (!) | - | - | - | - | - |
 | Stop the instance | AWS operator | - | - | - | OS shutdown | - (Scheduler role only) | - | - | - |
 | Create a support request | - | - | - | - | - | - | INSERT | - | Y |
@@ -54,6 +55,9 @@ Workflow tokens: `ci.yml` and `security.yml` use `contents: read` only. `release
 only to the job that calls AWS.
 
 ## 3. Required GitHub settings (not yet applied)
+
+This is the intended set-up. `main` is unprotected, pull requests #1 and #4 were merged without a review
+and no environment has a required reviewer.
 
 1. Ruleset on `main`: pull request with one approval, dismiss stale approvals, require
    `test-build`, `postgres-integration`, `secret-scan`, `dependency-scan`, `sast`, `image-scan`,
@@ -107,7 +111,8 @@ repository.
 | Check | State |
 |---|---|
 | Staff pages and API refuse missing or wrong credentials, unset hash | Done locally: `security-tests.txt` |
-| SSH as `root` or `ubuntu`, and password login, refused | Planned after deployment (`../platform/setup.md`) |
+| Root and password-only SSH login refused | Done on the host; `ubuntu` login not tried |
+| Live `/staff` refuses anonymous and wrong credentials (401) | Done on the host |
 | Direct push to `main` refused | Planned after the ruleset exists |
 | Deploy role refused another document or instance | Planned (IAM policy simulator) |
-| Port 80 refused from another network | Planned after deployment |
+| Port 80 refused from another network | Not tested |

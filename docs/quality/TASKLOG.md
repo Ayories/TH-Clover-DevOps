@@ -113,3 +113,25 @@ policy, refused SSH logins.
 
 **Limitations.** AI review, not peer review. No AWS account was inspected. Rotation, deletion and
 SSH-tunnel procedures are written but not executed.
+
+## Update after deployment (26 November 2026)
+
+AI-assisted. No team member has reviewed this work. The text above is kept as written before
+integration. Raw evidence is held by the team outside the repository.
+
+**What happened since.**
+- The Security workflow ran. Its first run (45752682107) failed the Trivy gate on libzstd1
+  (CVE-2026-124851, HIGH, fix available). The Dockerfile was fixed and the gate then passed.
+- Security checks passed on pull requests #1 and #4. Neither had a review; `main` is unprotected.
+- A Dependabot Python 3.15 update (pull request #3, open) fails the Security check.
+- Failed staff logins are now logged (pull request #4). Live `/staff` refused anonymous and wrong
+  credentials with 401. A successful staff login was not tested on AWS.
+- Local tests: 146 at the first push, 147 after pull request #4.
+
+**Statements above that no longer apply.** "Nothing here has been committed, pushed or run on GitHub";
+"The workflow has never run"; the Trivy gate is untested; no server was tested.
+
+**Differing records.** This log says the one first-run failure with a 413 was a mistake in the test.
+The [development log](../development/TASKLOG.md) says a first body limit of 32 KiB caused it and the
+limit was raised to 128 KiB. The two records differ and the repository history does not settle it. The
+current code caps requests at 128 KiB.

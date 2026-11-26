@@ -117,7 +117,7 @@ were not checked.
   distributed: keep its notices and do not prevent users replacing the library.
 - GPL tools are used to operate or check the system; they are not part of the application.
 - `gitleaks-action` has its own end-user licence and needs a key for organisation accounts
-  (Gitleaks, 2026). The drafted security workflow runs the MIT-licensed binary instead.
+  (Gitleaks, 2026). The security workflow runs the MIT-licensed binary instead.
 - Grafana (AGPL-3.0) is not part of the agreed architecture.
 
 ## Supplier lock-in
@@ -137,7 +137,8 @@ agreement should set out:
 2. Availability target and how it is measured. It should not promise more than the design supports:
    one host, with a scheduled stop, cannot support a 24/7 commitment.
 3. Incident severity levels, response times, and detection and recovery targets.
-4. Backup, restore, recovery point and recovery time. **No backup exists today.**
+4. Backup, restore, recovery point and recovery time. **Today there are only dumps taken before a
+   deployment, on the same disk; restore is untested.**
 5. Change, approval and maintenance windows; patching times.
 6. Data protection roles and a written controller-processor contract (Information Commissioner's
    Office, 2026a), breach notification, retention and deletion.

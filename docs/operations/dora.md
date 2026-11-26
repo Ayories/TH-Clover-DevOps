@@ -1,7 +1,21 @@
 # DORA measures
 
-AI-assisted (role area: Operations & Reliability). No results yet: nothing has been deployed with the
-new scripts. Do not fill this page from test fixtures.
+AI-assisted (role area: Operations & Reliability). Results below come from the deployment logs of
+26 November 2026. Do not fill this page from test fixtures.
+
+## Results (26 November 2026)
+
+| Measure | Production | Staging |
+|---|---|---|
+| Deployment frequency | 3 successful deploys on 1 day | 4 successful deploys on 1 day |
+| Lead time for change, median (min to max) | 4 min 36 s (4 min 05 s to 5 min 07 s), n=2 | 3 min 27 s (3 min 10 s to 3 min 44 s), n=2 |
+| Change failure rate | 1/3 | 2/4 |
+| Time to restore, median | 3 min 10 s, n=1 | 1 min 10 s (27 s to 1 min 52 s), n=2 |
+
+**The failure rate and restore times come entirely from deliberate rollback drills.** No deployment
+actually failed. The window is under an hour on one day, so there is no weekly rate and these figures
+are not a performance level. The input logs and `dora.py` output are held by the team outside the
+repository.
 
 ## Definitions used here
 
