@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Customer support{% endblock %} - Evolving Ltd</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header><strong>Evolving Ltd</strong> customer support</header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    Student proof of concept: do not enter real personal data.
+    Environment: {{ config.APP_ENV }}.
+  </footer>
+</body>
+</html>

@@ -1,0 +1,356 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  TH-CLOVER proof of concept (CMP6237, AI-assisted): one Ubuntu 24.04 host with least-privilege
+  roles, central log groups, alerting, an SSM deploy document, GitHub OIDC, cost controls.
+
+Parameters:
+  SshPublicKey:
+    Type: String
+    Description: Your ed25519 PUBLIC key (the whole one-line content of the .pub file).
+    AllowedPattern: '^ssh-ed25519 [A-Za-z0-9+/=]+( [A-Za-z0-9._@-]+)?$'
+    ConstraintDescription: Must be a single-line ssh-ed25519 public key with a simple comment.
+  AllowedCidr:
+    Type: String
+    Description: The only network allowed to reach ports 22, 80 and 8080, e.g. 203.0.113.10/32.
+    AllowedPattern: '^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])/(1[6-9]|2[0-9]|3[0-2])$'
+    ConstraintDescription: IPv4 CIDR between /16 and /32. 0.0.0.0/0 is refused.
+  AlertEmail:
+    Type: String
+    Description: Receives SNS alerts (confirm the subscription email) and budget warnings.
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues: [t3.small, t3.micro]
+  VolumeSizeGiB:
+    Type: Number
+    Default: 16
+    MinValue: 8
+    MaxValue: 30
+  UbuntuAmi:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: >-
+      Official Canonical SSM public parameter. It is re-resolved on every stack update, so check the
+      change set for instance replacement before updating.
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+  CreateGitHubOidcProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      Choose false if IAM already has the token.actions.githubusercontent.com identity provider.
+  GitHubOidcSubject:
+    Type: String
+    # The repository was created after 15 July 2026, so GitHub puts the numeric owner and repository
+    # IDs in the subject. Check with: gh api repos/Ayories/TH-Clover-DevOps/actions/oidc/customization/sub
+    Default: 'repo:Ayories@122867008/TH-Clover-DevOps@1463931000:ref:refs/heads/main'
+    Description: Exact OIDC subject allowed to deploy (Ayories/TH-Clover-DevOps, main branch only).
+    AllowedPattern: '^repo:Ayories(@[0-9]+)?/TH-Clover-DevOps(@[0-9]+)?:ref:refs/heads/main$'
+  StopHourLondon:
+    Type: Number
+    Default: 19
+    MinValue: 0
+    MaxValue: 23
+    Description: Hour (Europe/London) at which the instance is stopped Monday to Friday.
+  StopScheduleState:
+    Type: String
+    Default: ENABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: Set DISABLED while demonstrating in the evening.
+
+Conditions:
+  CreateOidcProvider: !Equals [!Ref CreateGitHubOidcProvider, 'true']
+
+Resources:
+  # ---------------------------------------------------------------- network
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: TH-CLOVER - SSH, production and staging from one authorised CIDR only
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref AllowedCidr, Description: SSH administration}
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: !Ref AllowedCidr, Description: Production}
+        - {IpProtocol: tcp, FromPort: 8080, ToPort: 8080, CidrIp: !Ref AllowedCidr, Description: Staging}
+      Tags:
+        - {Key: Name, Value: th-clover}
+        - {Key: Project, Value: th-clover}
+
+  # ---------------------------------------------------------------- logs and alerts
+  StagingLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: /th-clover/staging
+      RetentionInDays: 14
+
+  ProductionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: /th-clover/production
+      RetentionInDays: 14
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: th-clover-alerts
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ---------------------------------------------------------------- host
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: TH-CLOVER host - SSM agent, container logs, alert publishing
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: th-clover-host
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: WriteApplicationLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/th-clover/*
+              # The SSM managed policy allows reading any parameter; this host needs none.
+              - Sid: DenyParameterReads
+                Effect: Deny
+                Action: [ssm:GetParameter, ssm:GetParameters, ssm:GetParametersByPath]
+                Resource: '*'
+              - Sid: PublishAlerts
+                Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref AlertTopic
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
+  Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: [StagingLogGroup, ProductionLogGroup]
+    Properties:
+      ImageId: !Ref UbuntuAmi
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds: [!GetAtt SecurityGroup.GroupId]
+      # "standard" stops a burstable instance billing extra for surplus CPU credits.
+      CreditSpecification:
+        CPUCredits: standard
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        # 2 hops so that containers (Alertmanager -> SNS) can use the instance role.
+        HttpPutResponseHopLimit: 2
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref VolumeSizeGiB
+            Encrypted: true
+            DeleteOnTermination: true
+      # cloveradmin is the only account created: listing users without "default" means no
+      # shared "ubuntu" administrator account.
+      UserData:
+        Fn::Base64: !Sub |
+          #cloud-config
+          disable_root: true
+          ssh_pwauth: false
+          users:
+            - name: cloveradmin
+              gecos: TH-CLOVER administrator
+              groups: [sudo]
+              shell: /bin/bash
+              lock_passwd: true
+              sudo: "ALL=(ALL) NOPASSWD:ALL"
+              ssh_authorized_keys:
+                - "${SshPublicKey}"
+      Tags:
+        - {Key: Name, Value: th-clover}
+        - {Key: Project, Value: th-clover}
+
+  StatusCheckAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: th-clover-status-check-failed
+      AlarmDescription: The TH-CLOVER host or its network failed the EC2 status checks.
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed
+      Dimensions:
+        - {Name: InstanceId, Value: !Ref Instance}
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      # A deliberately stopped instance sends no data and must not raise an alert.
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  # ---------------------------------------------------------------- sustainability and cost
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Lets EventBridge Scheduler stop the TH-CLOVER instance only
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: scheduler.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: stop-th-clover
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ec2:StopInstances
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Instance}
+
+  EveningStopSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: th-clover-weekday-stop
+      Description: Stop the TH-CLOVER instance on weekday evenings
+      ScheduleExpression: !Sub cron(0 ${StopHourLondon} ? * MON-FRI *)
+      ScheduleExpressionTimezone: Europe/London
+      State: !Ref StopScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Sub arn:${AWS::Partition}:scheduler:::aws-sdk:ec2:stopInstances
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: !Sub '{"InstanceIds":["${Instance}"]}'
+
+  # The AWS Budget is created by infrastructure/budget.sh: this region's CloudFormation
+  # rejects AWS::Budgets::Budget ("Unrecognized resource types").
+
+  # ---------------------------------------------------------------- deployment without SSH
+  DeployDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      Name: th-clover-deploy
+      DocumentType: Command
+      TargetType: /AWS::EC2::Instance
+      UpdateMethod: NewVersion
+      Content:
+        schemaVersion: '2.2'
+        description: Deploy a TH-CLOVER release (immutable image digest) to staging or production.
+        parameters:
+          Environment:
+            type: String
+            allowedValues: [staging, production]
+            allowedPattern: '^(staging|production)$'
+          ImageRef:
+            type: String
+            allowedPattern: '^ghcr\.io/ayories/th-clover-devops@sha256:[0-9a-f]{64}$'
+          ReleaseSha:
+            type: String
+            allowedPattern: '^[0-9a-f]{40}$'
+        mainSteps:
+          - action: aws:runShellScript
+            name: deploy
+            inputs:
+              timeoutSeconds: '900'
+              runCommand:
+                - "/opt/th-clover/bin/deploy.sh '{{ Environment }}' '{{ ImageRef }}' '{{ ReleaseSha }}'"
+
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: GitHub Actions (main branch only) may run th-clover-deploy on this instance
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Ref GitHubOidcSubject
+      Policies:
+        - PolicyName: th-clover-deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: UseOnlyTheDeployDocument
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/${DeployDocument}
+              - Sid: TargetOnlyTheTaggedInstance
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Instance}
+                Condition:
+                  StringEquals:
+                    ssm:resourceTag/Project: th-clover
+              # The next two actions do not support resource-level permissions.
+              - Sid: ReadCommandResult
+                Effect: Allow
+                Action: ssm:GetCommandInvocation
+                Resource: '*'
+              - Sid: FindTheInstance
+                Effect: Allow
+                Action: ec2:DescribeInstances
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: !Ref AWS::Region
+
+Outputs:
+  InstanceId:
+    Value: !Ref Instance
+  PublicIp:
+    Description: Public IP at creation. It changes after a stop/start - read the current one in EC2.
+    Value: !GetAtt Instance.PublicIp
+  SshCommand:
+    Value: !Sub ssh -i ~/.ssh/th_clover_ed25519 cloveradmin@${Instance.PublicIp}
+  ProductionUrl:
+    Value: !Sub http://${Instance.PublicIp}/
+  StagingUrl:
+    Value: !Sub http://${Instance.PublicIp}:8080/
+  SnsTopicArn:
+    Description: Pass to Ansible as sns_topic_arn.
+    Value: !Ref AlertTopic
+  DeployRoleArn:
+    Description: Set as the GitHub repository variable AWS_DEPLOY_ROLE_ARN.
+    Value: !GetAtt DeployRole.Arn
+  DeployDocumentName:
+    Value: !Ref DeployDocument
+  LogGroups:
+    Value: !Sub ${StagingLogGroup}, ${ProductionLogGroup}
+  SecurityGroupId:
+    Value: !GetAtt SecurityGroup.GroupId

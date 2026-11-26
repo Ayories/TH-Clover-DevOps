@@ -1,0 +1,59 @@
+# promtool unit tests for alert-rules.yml (synthetic series, not measurements).
+rule_files:
+  - alert-rules.yml
+evaluation_interval: 15s
+tests:
+  - interval: 15s
+    input_series:
+      - series: 'clover_database_up{job="clover", environment="production", instance="production-app:8000"}'
+        values: '1 0x12'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CloverDatabaseDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              environment: production
+              job: clover
+              instance: production-app:8000
+            exp_annotations:
+              summary: 'TH-CLOVER production application cannot reach its database'
+              runbook: 'docs/operations/incident-runbook.md'
+  - interval: 15s
+    input_series:
+      - series: 'up{job="clover", environment="production", instance="production-app:8000"}'
+        values: '1 1 0x12 1x4'
+      - series: 'up{job="clover", environment="staging", instance="staging-app:8000"}'
+        values: '0x18'
+    alert_rule_test:
+      # Down for less than one minute: no production alert yet.
+      - eval_time: 1m
+        alertname: CloverAppDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: CloverAppDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              environment: production
+              job: clover
+              instance: production-app:8000
+            exp_annotations:
+              summary: 'TH-CLOVER production application is not answering'
+              runbook: 'docs/operations/incident-runbook.md'
+      # A stopped staging environment is a warning, never critical.
+      - eval_time: 2m
+        alertname: CloverStagingDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              environment: staging
+              job: clover
+              instance: staging-app:8000
+            exp_annotations:
+              summary: 'TH-CLOVER staging application is not answering'
+              runbook: 'docs/operations/incident-runbook.md'
+      # Recovered: the production alert clears.
+      - eval_time: 4m30s
+        alertname: CloverAppDown
+        exp_alerts: []

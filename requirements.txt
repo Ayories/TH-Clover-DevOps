@@ -1,0 +1,17 @@
+# Runtime dependencies, fully pinned (direct and transitive).
+# Versions checked against PyPI on 2026-11-26; audit with: pip-audit -r requirements.txt
+Flask==3.1.3
+SQLAlchemy==2.1.9
+psycopg2-binary==2.9.13
+prometheus-client==0.26.0
+gunicorn==27.0.1
+
+# Transitive
+blinker==1.9.0
+click==8.5.1
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.4
+packaging==26.4
+typing_extensions==4.16.0
+Werkzeug==3.1.9

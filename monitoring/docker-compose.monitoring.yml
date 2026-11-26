@@ -1,0 +1,66 @@
+# TH-CLOVER monitoring stack (AI-assisted). Usage and required variables: monitoring/README.md.
+name: clover-monitoring
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "3"
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.13.5
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=3d
+      - --storage.tsdb.retention.size=500MB
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - alertmanager
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+    networks:
+      - clover-monitoring
+
+  alertmanager:
+    image: prom/alertmanager:v0.35.1
+    environment:
+      SNS_TOPIC_ARN: ${SNS_TOPIC_ARN:?Set SNS_TOPIC_ARN in monitoring/.env}
+      AWS_REGION: ${AWS_REGION:-eu-north-1}
+    # Alertmanager does not expand environment variables, so render the template first.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        sed -e "s|__SNS_TOPIC_ARN__|$$SNS_TOPIC_ARN|g" -e "s|__AWS_REGION__|$$AWS_REGION|g"
+        /etc/alertmanager/alertmanager.yml.tmpl > /alertmanager/alertmanager.rendered.yml &&
+        exec /bin/alertmanager
+        --config.file=/alertmanager/alertmanager.rendered.yml
+        --storage.path=/alertmanager
+        --data.retention=72h
+        --cluster.listen-address=
+    volumes:
+      - ./alertmanager.yml.tmpl:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: *logging
+    networks:
+      - clover-monitoring
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+
+networks:
+  clover-monitoring:
+    external: true
+    name: clover-monitoring

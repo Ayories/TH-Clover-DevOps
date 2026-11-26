@@ -1,0 +1,31 @@
+# Weekly update pull requests. They go through the same CI and Security gates and review
+# as any other change. The cooldown delays brand-new releases by 7 days so that a
+# compromised release has time to be noticed (security updates are not delayed).
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: docker-compose
+    directories:
+      - /infrastructure
+      - /monitoring
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

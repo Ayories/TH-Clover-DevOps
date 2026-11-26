@@ -1,0 +1,18 @@
+# Local development override: builds the image from the repository Dockerfile.
+# From the repository root:
+#   cp infrastructure/local.env.example infrastructure/local.env    # then edit the values
+#   docker compose --env-file infrastructure/local.env \
+#     -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.local.yml up --build
+# Then open http://127.0.0.1:8000/
+name: clover-development
+
+services:
+  app:
+    build:
+      context: ..
+
+networks:
+  # Locally Compose creates the network itself, so no manual "docker network create" is needed.
+  clover-monitoring:
+    name: clover-monitoring
+    external: false

@@ -1,0 +1,8 @@
+# Allow-list: only what the Dockerfile copies is sent to the build.
+**
+!requirements.txt
+!app/**
+**/__pycache__
+**/*.pyc
+**/*.db
+**/.env*

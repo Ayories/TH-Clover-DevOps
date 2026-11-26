@@ -1,0 +1,32 @@
+# TH-CLOVER Alertmanager template (AI-assisted).
+# __SNS_TOPIC_ARN__ and __AWS_REGION__ are replaced when the container starts (see monitoring/README.md).
+# Credentials come from the EC2 instance role. Never add access keys here.
+route:
+  receiver: sns-email
+  group_by: ['alertname', 'environment']
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['severity!="critical"']
+      receiver: visible-only
+
+receivers:
+  - name: sns-email
+    sns_configs:
+      - topic_arn: '__SNS_TOPIC_ARN__'
+        sigv4:
+          region: '__AWS_REGION__'
+        send_resolved: true
+        subject: 'TH-CLOVER {{ .Status | toUpper }} {{ .CommonLabels.alertname }} {{ .CommonLabels.environment }}'
+        message: |-
+          Status: {{ .Status }}
+          {{ range .Alerts }}
+          Alert: {{ .Labels.alertname }} ({{ .Labels.severity }}, {{ .Labels.environment }})
+          Summary: {{ .Annotations.summary }}
+          Started (UTC): {{ .StartsAt.UTC.Format "2006-01-02 15:04:05" }}
+          Runbook: {{ .Annotations.runbook }}
+          {{ end }}
+
+  # No integration: alerts stay visible in the UI and API only.
+  - name: visible-only

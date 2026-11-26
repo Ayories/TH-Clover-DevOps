@@ -1,0 +1,10 @@
+# Managed by Ansible (TH-CLOVER). Do not edit on the host.
+# sshd keeps the FIRST value it reads for each option, so this file is numbered 00 to win over
+# 50-cloud-init.conf and 60-cloudimg-settings.conf.
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AllowUsers {{ admin_user }}
+X11Forwarding no
+MaxAuthTries 3

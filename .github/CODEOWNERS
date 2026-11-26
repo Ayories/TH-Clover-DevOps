@@ -1,0 +1,37 @@
+# Code owners are asked to review pull requests that touch their area.
+#
+# Known collaborators: Ayories, Cre8ivexiv, AYOO101-cyber, GalenKudwoli, naas3i
+# Only @Cre8ivexiv is confirmed (Timilehin, Quality and Security). The team must
+# confirm the other account-to-role mappings before uncommenting those lines.
+# Until then those paths have no code owner; the one-peer-review rule still applies.
+
+# Quality and Security (confirmed)
+/tests/test_security.py            @Cre8ivexiv
+/.github/workflows/security.yml    @Cre8ivexiv
+/.github/dependabot.yml            @Cre8ivexiv
+/.gitleaks.toml                    @Cre8ivexiv
+/.trivyignore                      @Cre8ivexiv
+/docs/quality/                     @Cre8ivexiv
+
+# Development and source management (AbdulQuadri Sanusi): account to be confirmed
+# /app/                              TO-BE-CONFIRMED
+# /tests/test_app.py                 TO-BE-CONFIRMED
+# /Dockerfile                        TO-BE-CONFIRMED
+# /requirements*.txt                 TO-BE-CONFIRMED
+# /.github/workflows/ci.yml          TO-BE-CONFIRMED
+# /.github/workflows/release.yml     TO-BE-CONFIRMED
+
+# Platform and infrastructure (Jesutofunmi Jinadu): account to be confirmed
+# /infrastructure/                   TO-BE-CONFIRMED
+# /scripts/deploy.sh                 TO-BE-CONFIRMED
+# /.github/workflows/deploy.yml      TO-BE-CONFIRMED
+# /.github/workflows/shutdown.yml    TO-BE-CONFIRMED
+
+# Operations and reliability (Nana Owusu): account to be confirmed
+# /monitoring/                       TO-BE-CONFIRMED
+# /scripts/ops/                      TO-BE-CONFIRMED
+# /.github/workflows/monitoring.yml  TO-BE-CONFIRMED
+
+# Business and delivery (Galen Kudwoli): account to be confirmed
+# /docs/business/                    TO-BE-CONFIRMED
+# /.github/workflows/sprint-report.yml  TO-BE-CONFIRMED

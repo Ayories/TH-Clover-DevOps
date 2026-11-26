@@ -1,0 +1,62 @@
+# AI-assisted (role area: Operations & Reliability).
+# Replaces the old public uptime probe: the security group admits web traffic from one authorised
+# address only, so a GitHub-hosted runner cannot reach /health. Live monitoring is Prometheus on the
+# host (see docs/operations/monitoring.md). This workflow checks the monitoring and operations files
+# before they are merged. It needs no secrets and no AWS access.
+name: Monitoring config check
+
+on:
+  pull_request:
+    paths: ['monitoring/**', 'scripts/**', '.github/workflows/monitoring.yml']
+  push:
+    branches: [main]
+    paths: ['monitoring/**', 'scripts/**', '.github/workflows/monitoring.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Validate monitoring and operations scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PROMETHEUS_IMAGE: prom/prometheus:v3.13.5
+      ALERTMANAGER_IMAGE: prom/alertmanager:v0.35.1
+      # Placeholder only. No credentials exist here, so nothing can be published.
+      SNS_TOPIC_ARN: arn:aws:sns:eu-north-1:000000000000:ci-placeholder
+      AWS_REGION: eu-north-1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Prometheus configuration, rules and rule tests
+        run: |
+          prom() {
+            docker run --rm -v "$PWD/monitoring:/etc/prometheus:ro" -w /etc/prometheus \
+              --entrypoint promtool "$PROMETHEUS_IMAGE" "$@"
+          }
+          prom check config prometheus.yml
+          prom test rules alert-rules.test.yml
+
+      - name: Start the monitoring stack and check the rendered Alertmanager configuration
+        run: |
+          compose() { docker compose -f monitoring/docker-compose.monitoring.yml "$@"; }
+          trap 'compose logs --tail 50; compose down -v' EXIT
+          docker network create clover-monitoring
+          compose up -d
+          for port in 9090 9093; do
+            curl --fail --silent --show-error --retry 20 --retry-delay 2 --retry-all-errors \
+              "http://127.0.0.1:$port/-/ready"
+          done
+          compose exec -T alertmanager amtool check-config /alertmanager/alertmanager.rendered.yml
+
+      - name: ShellCheck
+        run: shellcheck scripts/health-check.sh scripts/rollback.sh scripts/ops/*.sh
+
+      - name: Unit checks (fake fixtures)
+        run: |
+          bash scripts/ops/test_scripts.sh
+          python3 -m unittest discover -s scripts/ops -p 'test_*.py' -v

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Contact us{% endblock %}
+{% block content %}
+<h1>Send a support request</h1>
+{% if sent %}<p class="notice" role="status">Thank you. Your request has been received.</p>{% endif %}
+{% if errors %}
+<div class="errors" role="alert">
+  <p>Please correct the following:</p>
+  <ul>{% for error in errors.values() %}<li>{{ error }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+<p>We use your name and email address only to answer this request.</p>
+<form method="post" action="{{ url_for('submit_request') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label for="name">Name</label>
+  <input id="name" name="name" required maxlength="100" autocomplete="name"
+         value="{{ values.get('name', '') }}">
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" required maxlength="254" autocomplete="email"
+         value="{{ values.get('email', '') }}">
+  <label for="message">Message</label>
+  <textarea id="message" name="message" required maxlength="2000"
+            rows="6">{{ values.get('message', '') }}</textarea>
+  <button type="submit">Send request</button>
+</form>
+{% endblock %}

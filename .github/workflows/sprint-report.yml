@@ -1,0 +1,22 @@
+name: Weekly sprint summary
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create issue summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 'gh issue create --label' fails if the label is missing; --force makes this repeatable.
+          gh label create sprint-report --repo "$GITHUB_REPOSITORY" --color 0e8a16 --description 'Weekly sprint summary' --force
+          OPEN=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number,title)
+          CLOSED=$(gh issue list --repo "$GITHUB_REPOSITORY" --state closed --limit 100 --json number,title,closedAt)
+          printf 'Open issues (up to 100):\n```json\n%s\n```\nClosed issues (up to 100):\n```json\n%s\n```\n' "$OPEN" "$CLOSED" > report.md
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "Sprint report $(date -u +%F)" --body-file report.md --label sprint-report

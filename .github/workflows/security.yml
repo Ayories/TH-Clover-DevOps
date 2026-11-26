@@ -1,0 +1,181 @@
+# Security quality gate (REQ-01, REQ-02, REQ-05). AI-assisted; area: Quality & Security.
+#
+# Supply-chain rules for this file:
+#  - Third-party actions are pinned to full commit SHAs (the comment gives the release).
+#  - aquasecurity/trivy-action and setup-trivy are deliberately NOT used (March 2026
+#    compromise, CVE-2026-33634 / GHSA-69fq-xp46-6x23). Trivy runs from its official
+#    image, pinned by digest, with no Docker socket and no tokens in its environment.
+#  - Gitleaks is the official release binary, checked against a pinned SHA-256.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: '8.30.1'
+  GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+  # Trivy v0.76.2 multi-arch index digest (same on ghcr.io and Docker Hub, checked 2026-11-26)
+  TRIVY_IMAGE: 'ghcr.io/aquasecurity/trivy@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb'
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Gitleaks (checksum verified)
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan full history for secrets
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --exit-code 1 \
+            --report-format json --report-path "$RUNNER_TEMP/gitleaks-report.json" .
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: gitleaks-report
+          path: ${{ runner.temp }}/gitleaks-report.json
+          if-no-files-found: warn
+
+  dependency-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install pip-audit
+        run: python -m pip install pip-audit==2.10.1
+      - name: Audit runtime and development dependencies
+        run: |
+          mkdir -p reports
+          status=0
+          pip-audit -r requirements.txt --progress-spinner off \
+            -f json -o reports/pip-audit-runtime.json || status=1
+          pip-audit -r requirements-dev.txt --progress-spinner off \
+            -f json -o reports/pip-audit-dev.json || status=1
+          exit "$status"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: pip-audit-reports
+          path: reports/
+          if-no-files-found: warn
+
+  sast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install Bandit
+        run: python -m pip install bandit==1.9.4
+      - name: Full Bandit report (all severities, never fails)
+        run: |
+          mkdir -p reports
+          bandit -r app scripts infrastructure -f json -o reports/bandit.json --exit-zero
+      - name: Bandit gate (medium and high severity)
+        run: bandit -r app scripts infrastructure -ll
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: bandit-report
+          path: reports/
+          if-no-files-found: warn
+
+  image-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build image and export it for scanning
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy" "$RUNNER_TEMP/trivy-cache"
+          docker build -t th-clover:scan .
+          docker save -o "$RUNNER_TEMP/trivy/image.tar" th-clover:scan
+      - name: Trivy report (HIGH/CRITICAL including unfixed, never fails)
+        run: |
+          docker run --rm \
+            -v "$RUNNER_TEMP/trivy:/work" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image --input /work/image.tar --no-progress \
+            --severity HIGH,CRITICAL --format json --output /work/trivy-report.json --exit-code 0
+      - name: Trivy gate (fail on fixable HIGH/CRITICAL)
+        run: |
+          ignore=()
+          if [ -f .trivyignore ]; then
+            cp .trivyignore "$RUNNER_TEMP/trivy/.trivyignore"
+            ignore=(--ignorefile /work/.trivyignore)
+          fi
+          docker run --rm \
+            -v "$RUNNER_TEMP/trivy:/work" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image --input /work/image.tar --no-progress \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "${ignore[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: trivy-report
+          path: ${{ runner.temp }}/trivy/trivy-report.json
+          if-no-files-found: warn
+
+  iac-lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      # Pinned versions, so CI gives the same result as a local run (the runner's own
+      # ShellCheck is older and can report different findings).
+      - name: Install linters
+        run: python -m pip install cfn-lint==1.61.0 shellcheck-py==0.11.0.1
+      - name: cfn-lint (CloudFormation templates)
+        run: |
+          mkdir -p reports
+          shopt -s nullglob
+          templates=(infrastructure/cloudformation/*.yml infrastructure/cloudformation/*.yaml)
+          if [ "${#templates[@]}" -eq 0 ]; then
+            echo 'No CloudFormation templates found' | tee reports/cfn-lint.txt
+            exit 0
+          fi
+          set -o pipefail
+          cfn-lint "${templates[@]}" 2>&1 | tee reports/cfn-lint.txt
+      - name: shellcheck (shell scripts)
+        run: |
+          set -o pipefail
+          mkdir -p reports
+          shellcheck --version | tee reports/shellcheck.txt
+          git ls-files -z -- '*.sh' | xargs -0 -r shellcheck 2>&1 | tee -a reports/shellcheck.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: iac-lint-reports
+          path: reports/
+          if-no-files-found: warn
