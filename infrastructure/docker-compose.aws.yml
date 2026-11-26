@@ -1,0 +1,18 @@
+# AWS override: send container output to CloudWatch Logs using the instance role.
+# The log groups are created by cloudformation/th-clover.yml (14-day retention).
+x-awslogs: &awslogs
+  driver: awslogs
+  options:
+    awslogs-region: eu-north-1
+    awslogs-group: /th-clover/${APP_ENV:?}
+    # Log stream name: container name and short ID.
+    tag: "{{.Name}}/{{.ID}}"
+    # Never block the application if CloudWatch is slow or unreachable.
+    mode: non-blocking
+    max-buffer-size: 4m
+
+services:
+  app:
+    logging: *awslogs
+  db:
+    logging: *awslogs

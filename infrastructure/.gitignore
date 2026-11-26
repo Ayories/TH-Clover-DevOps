@@ -1,0 +1,4 @@
+# Operator-specific files that must not be committed
+local.env
+ansible/inventory.ini
+*.retry

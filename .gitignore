@@ -1,0 +1,28 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+secrets.env
+*.pem
+*.key
+
+# Local databases
+*.db
+
+# Python and test output
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+pytest-results.xml
+pytest-postgres.xml
+
+# Release output written by the workflows
+release.env
+release-manifest.json
+trivy-release.txt

@@ -1,0 +1,243 @@
+---
+# Configures the Linux host created by ../cloudformation/th-clover.yml. Safe to run repeatedly.
+# Run from WSL:  ANSIBLE_CONFIG=$PWD/ansible.cfg ansible-playbook site.yml
+- name: Configure the TH-CLOVER Linux host
+  hosts: clover
+  become: true
+  vars:
+    admin_user: cloveradmin
+    aws_region: eu-north-1
+    clover_dir: /opt/th-clover
+    repo_dir: "{{ playbook_dir }}/../.."
+    swap_size_mb: 2048
+    clover_environments: [staging, production]
+
+  handlers:
+    # Both handlers listen for one event and run in this order: a failed check stops the reload.
+    - name: Check the sshd configuration
+      ansible.builtin.command: /usr/sbin/sshd -t
+      changed_when: false
+      listen: Apply sshd configuration
+
+    - name: Reload SSH
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded
+      listen: Apply sshd configuration
+
+  pre_tasks:
+    - name: Check the target and the required variables
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - sns_topic_arn is defined
+          - sns_topic_arn is match('^arn:aws:sns:[a-z0-9-]+:[0-9]{12}:th-clover-alerts$')
+        fail_msg: Set sns_topic_arn to the SnsTopicArn stack output (see inventory.example.ini).
+
+    - name: Wait for first-boot configuration to finish
+      ansible.builtin.command: cloud-init status --wait
+      register: cloud_init
+      changed_when: false
+      # 2 means finished with recoverable warnings
+      failed_when: cloud_init.rc not in [0, 2]
+
+    - name: Look up the administrator's authorised keys
+      ansible.builtin.stat:
+        path: "/home/{{ admin_user }}/.ssh/authorized_keys"
+      register: admin_keys
+
+    - name: Refuse to harden SSH if it would lock the administrator out
+      ansible.builtin.assert:
+        that:
+          - admin_keys.stat.exists
+          - admin_keys.stat.size > 0
+        fail_msg: "{{ admin_user }} has no authorised SSH key."
+
+  tasks:
+    - name: Install packages
+      ansible.builtin.apt:
+        name: [docker.io, docker-compose-v2, curl, unattended-upgrades]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Ensure Docker is running and starts at boot
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    # ------------------------------------------------------------- SSH hardening
+    - name: Harden SSH with a drop-in file
+      ansible.builtin.template:
+        src: 00-th-clover-hardening.conf.j2
+        dest: /etc/ssh/sshd_config.d/00-th-clover-hardening.conf
+        owner: root
+        group: root
+        mode: "0644"
+        validate: /usr/sbin/sshd -t -f %s
+      notify: Apply sshd configuration
+
+    - name: Apply the SSH change now
+      ansible.builtin.meta: flush_handlers
+
+    - name: Read the effective sshd configuration
+      ansible.builtin.command: /usr/sbin/sshd -T
+      register: sshd_effective
+      changed_when: false
+
+    - name: Confirm that the hardening is in effect
+      ansible.builtin.assert:
+        that:
+          - "'permitrootlogin no' in sshd_effective.stdout_lines"
+          - "'passwordauthentication no' in sshd_effective.stdout_lines"
+          - "'kbdinteractiveauthentication no' in sshd_effective.stdout_lines"
+          - "('allowusers ' ~ admin_user) in sshd_effective.stdout_lines"
+
+    # ------------------------------------------------------------- updates and memory
+    - name: Enable automatic security updates
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Create the swap file
+      ansible.builtin.command: "dd if=/dev/zero of=/swapfile bs=1M count={{ swap_size_mb }}"
+      args:
+        creates: /swapfile
+
+    - name: Protect the swap file
+      ansible.builtin.file:
+        path: /swapfile
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: List active swap
+      ansible.builtin.command: swapon --show=NAME --noheadings
+      register: active_swap
+      changed_when: false
+
+    - name: Format and enable the swap file
+      when: "'/swapfile' not in active_swap.stdout_lines"
+      block:
+        - name: Format the swap file
+          ansible.builtin.command: mkswap /swapfile
+          changed_when: true
+
+        - name: Enable the swap file
+          ansible.builtin.command: swapon /swapfile
+          changed_when: true
+
+    - name: Keep swap after a restart
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: /swapfile none swap sw 0 0
+        regexp: '^/swapfile\s'
+
+    # ------------------------------------------------------------- application files
+    - name: Create the deployment directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      loop:
+        - "{{ clover_dir }}"
+        - "{{ clover_dir }}/bin"
+        - "{{ clover_dir }}/ops"
+        - "{{ clover_dir }}/monitoring"
+        - "{{ clover_dir }}/staging"
+        - "{{ clover_dir }}/production"
+
+    # Files are copied through "content" so that Windows (CRLF) line endings in a working copy
+    # can never break a script on the host.
+    - name: Install the deployment scripts
+      ansible.builtin.copy:
+        dest: "{{ clover_dir }}/bin/{{ item }}"
+        content: "{{ lookup('ansible.builtin.file', repo_dir ~ '/scripts/' ~ item).splitlines() | join('\n') }}\n"
+        owner: root
+        group: root
+        mode: "0750"
+      loop: [deploy.sh, rollback.sh, health-check.sh]
+
+    - name: Install the operations drill scripts
+      ansible.builtin.copy:
+        dest: "{{ clover_dir }}/ops/{{ item | basename }}"
+        content: "{{ lookup('ansible.builtin.file', item).splitlines() | join('\n') }}\n"
+        owner: root
+        group: root
+        mode: "0750"
+      loop: "{{ query('ansible.builtin.fileglob', repo_dir ~ '/scripts/ops/*.sh') }}"
+
+    - name: Install the Compose definitions
+      ansible.builtin.copy:
+        dest: "{{ clover_dir }}/{{ item }}"
+        content: "{{ lookup('ansible.builtin.file', repo_dir ~ '/infrastructure/' ~ item).splitlines() | join('\n') }}\n"
+        owner: root
+        group: root
+        mode: "0640"
+      loop: [docker-compose.yml, docker-compose.aws.yml]
+
+    - name: Install the secret generator
+      ansible.builtin.copy:
+        dest: "{{ clover_dir }}/bin/generate_secrets.py"
+        content: "{{ lookup('ansible.builtin.file', 'generate_secrets.py').splitlines() | join('\n') }}\n"
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Generate each environment's secrets once
+      ansible.builtin.command: "python3 {{ clover_dir }}/bin/generate_secrets.py {{ clover_dir }}/{{ item }}"
+      args:
+        creates: "{{ clover_dir }}/{{ item }}/secrets.env"
+      loop: "{{ clover_environments }}"
+      no_log: true
+
+    # ------------------------------------------------------------- monitoring
+    - name: Install the monitoring files
+      ansible.builtin.copy:
+        dest: "{{ clover_dir }}/monitoring/{{ item | basename }}"
+        content: "{{ lookup('ansible.builtin.file', item).splitlines() | join('\n') }}\n"
+        owner: root
+        group: root
+        # world-readable: Prometheus and Alertmanager read them as unprivileged users
+        mode: "0644"
+      loop: "{{ query('ansible.builtin.fileglob', repo_dir ~ '/monitoring/*.yml', repo_dir ~ '/monitoring/*.tmpl') }}"
+      register: monitoring_files
+
+    - name: Write the monitoring settings
+      ansible.builtin.template:
+        src: monitoring.env.j2
+        dest: "{{ clover_dir }}/monitoring/.env"
+        owner: root
+        group: root
+        mode: "0600"
+      register: monitoring_env
+
+    - name: Check for the shared monitoring network
+      ansible.builtin.command: docker network inspect clover-monitoring
+      register: monitoring_network
+      changed_when: false
+      failed_when: false
+
+    - name: Create the shared monitoring network
+      ansible.builtin.command: docker network create clover-monitoring
+      when: monitoring_network.rc != 0
+      changed_when: true
+
+    - name: Start monitoring
+      ansible.builtin.command:
+        argv: "{{ ['docker', 'compose', '-f', 'docker-compose.monitoring.yml', 'up', '-d'] + recreate }}"
+        chdir: "{{ clover_dir }}/monitoring"
+      vars:
+        # Single-file bind mounts only pick up new content when the container is recreated.
+        recreate: "{{ ['--force-recreate'] if (monitoring_files is changed or monitoring_env is changed) else [] }}"
+      register: monitoring_up
+      changed_when: >-
+        monitoring_up.stderr is search('Started|Created|Recreated')

@@ -1,0 +1,33 @@
+# TH-CLOVER alert rules (AI-assisted). Only severity=critical sends a notification.
+# Expected worst case before Alertmanager sends: scrape 15s + evaluation 15s + for 1m + group_wait 10s = 100s,
+# then SNS email delivery. This is a design figure, not a measurement.
+groups:
+  - name: clover-availability
+    rules:
+      - alert: CloverAppDown
+        expr: up{job="clover", environment="production"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'TH-CLOVER production application is not answering'
+          runbook: 'docs/operations/incident-runbook.md'
+
+      - alert: CloverDatabaseDown
+        expr: clover_database_up{job="clover", environment="production"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'TH-CLOVER production application cannot reach its database'
+          runbook: 'docs/operations/incident-runbook.md'
+
+      # Staging may be stopped on purpose, so it is shown in Prometheus and Alertmanager but not sent.
+      - alert: CloverStagingDown
+        expr: up{job="clover", environment="staging"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'TH-CLOVER staging application is not answering'
+          runbook: 'docs/operations/incident-runbook.md'

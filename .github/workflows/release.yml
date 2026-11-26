@@ -1,0 +1,162 @@
+# Publishes one image per commit on main, only after tests and security checks pass.
+# AI-assisted. Flow: tests + a successful Security workflow -> build once ->
+# scan that image -> push -> record digest, commit, run URL and pull request.
+#
+# aquasecurity/trivy-action is deliberately not used (March 2026 tag compromise,
+# GHSA-69fq-xp46-6x23). Trivy runs from its official image, pinned by digest, with
+# no Docker socket and no tokens in its environment.
+name: Publish verified image
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/ayories/th-clover-devops
+  # Trivy v0.76.2; keep in step with .github/workflows/security.yml
+  TRIVY_IMAGE: 'ghcr.io/aquasecurity/trivy@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb'
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check app tests
+      - run: pytest -q tests --junitxml=pytest-results.xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: release-test-results
+          path: pytest-results.xml
+
+  security-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+    outputs:
+      run_url: ${{ steps.wait.outputs.run_url }}
+    steps:
+      - name: Require a successful Security workflow run for this commit
+        id: wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 100); do
+            run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow security.yml \
+              --commit "$GITHUB_SHA" --event push --limit 1 --json status,conclusion,url \
+              --jq '.[0] // empty | [.status, .conclusion, .url] | @tsv') || run=''
+            if [[ "$run" == completed$'\t'* ]]; then
+              IFS=$'\t' read -r _ conclusion url <<< "$run"
+              echo "Security run $url: $conclusion"
+              [[ "$conclusion" == success ]] || exit 1
+              echo "run_url=$url" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo '::error::No completed Security run found for this commit.'
+          exit 1
+
+  publish:
+    needs: [test, security-gate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the release image once
+        run: docker build --build-arg REVISION="$GITHUB_SHA" -t "$IMAGE:$GITHUB_SHA" .
+
+      - name: Trivy gate on that image (fixable HIGH/CRITICAL fail the release)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/trivy" "$RUNNER_TEMP/trivy-cache"
+          docker save -o "$RUNNER_TEMP/trivy/image.tar" "$IMAGE:$GITHUB_SHA"
+          ignore=()
+          if [ -f .trivyignore ]; then
+            cp .trivyignore "$RUNNER_TEMP/trivy/.trivyignore"
+            ignore=(--ignorefile /work/.trivyignore)
+          fi
+          docker run --rm \
+            -v "$RUNNER_TEMP/trivy:/work" \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image --input /work/image.tar --no-progress \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "${ignore[@]}" \
+            | tee trivy-release.txt
+
+      - name: Push to GHCR and read the digest
+        id: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$GITHUB_SHA"
+          ref=$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$IMAGE:$GITHUB_SHA" \
+            | grep -m1 "^$IMAGE@sha256:")
+          [[ "$ref" =~ @sha256:[0-9a-f]{64}$ ]]
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Write the release manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_REF: ${{ steps.push.outputs.ref }}
+          SECURITY_RUN_URL: ${{ needs.security-gate.outputs.run_url }}
+        run: |
+          set -euo pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[] | select(.base.ref == "main" and .merged_at != null)][0].number // empty')
+          approvers='[]'
+          if [[ -n "$pr" ]]; then
+            approvers=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/reviews?per_page=100" \
+              --jq '[.[] | select(.state == "APPROVED") | .user.login] | unique')
+          else
+            echo '::warning::No merged pull request found for this commit.'
+          fi
+          [[ "$approvers" != '[]' ]] || echo '::warning::No approving review is recorded.'
+          jq -n \
+            --arg image "$IMAGE_REF" --arg sha "$GITHUB_SHA" --arg run "$run_url" \
+            --arg security "$SECURITY_RUN_URL" --arg pr "$pr" --argjson approvers "$approvers" \
+            --arg created "$(date -u +%FT%TZ)" \
+            '{image: $image, sha: $sha, release_run: $run, security_run: $security,
+              pull_request: (if $pr == "" then null else ($pr | tonumber) end),
+              approved_by: $approvers, created: $created}' > release-manifest.json
+          printf 'APP_IMAGE=%s\nRELEASE_SHA=%s\n' "$IMAGE_REF" "$GITHUB_SHA" > release.env
+          {
+            echo '### Release manifest'
+            echo '```json'
+            cat release-manifest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-manifest
+          path: |
+            release-manifest.json
+            release.env
+            trivy-release.txt
+          retention-days: 90
