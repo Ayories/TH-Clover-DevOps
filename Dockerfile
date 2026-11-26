@@ -1,5 +1,5 @@
 # Pinned by tag and digest (checked against Docker Hub on 2026-11-26).
-FROM python:3.12.16-slim-trixie@sha256:191083cdf6c7bda8c76158983163ead5d5cf7b77cf3033e805bb0f5296f51b4b
+FROM python:3.15.1-slim-trixie@sha256:533b0b2f9b5d46fd097091cf826f27902f1d6c3bca714b6dc74551356aa97a51
 
 # CI passes the Git commit: docker build --build-arg REVISION=<40-character SHA>
 ARG REVISION=unknown
