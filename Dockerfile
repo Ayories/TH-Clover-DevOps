@@ -14,6 +14,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /service
+# The pinned base image ships a libzstd1 with a fixed HIGH vulnerability (CVE-2026-124851),
+# found by the Trivy gate. Upgrade only that package; drop this once the base image has the fix.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade libzstd1 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --system --uid 10001 --user-group --no-create-home appuser
 
 # pip is not needed at run time, so remove it to shrink the attack surface.
