@@ -173,3 +173,7 @@ measured. Rollback does not reverse database changes. Backups sit on the same di
 **Problems & solutions:** none.
 
 **Limitations:** the instructions have not been followed end to end; console labels may differ.
+
+## Problem found at deployment: budget resource (2026-11-26)
+
+CloudFormation in eu-north-1 rejected `AWS::Budgets::Budget` (Unrecognized resource types). The budget moved to `infrastructure/budget.sh`, run once in CloudShell: `bash infrastructure/budget.sh <alert-email> 15`. The `MonthlyBudgetUsd` stack parameter no longer exists.

@@ -211,3 +211,7 @@ security group inbound rules; IAM deploy role trust policy; SSM document; first 
 recap; section 6 outputs; deploy workflow summary; `/health` of both environments; CloudWatch log
 stream; confirmed SNS subscription; budget; EventBridge schedule. Hide the account ID, IP addresses and
 email addresses where they are not needed.
+
+## Problem found at deployment: budget resource (2026-11-26)
+
+CloudFormation in eu-north-1 rejected `AWS::Budgets::Budget` (Unrecognized resource types). The budget moved to `infrastructure/budget.sh`, run once in CloudShell: `bash infrastructure/budget.sh <alert-email> 15`. The `MonthlyBudgetUsd` stack parameter no longer exists.

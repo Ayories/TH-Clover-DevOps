@@ -57,10 +57,6 @@ Parameters:
     Default: ENABLED
     AllowedValues: [ENABLED, DISABLED]
     Description: Set DISABLED while demonstrating in the evening.
-  MonthlyBudgetUsd:
-    Type: Number
-    Default: 20
-    MinValue: 1
 
 Conditions:
   CreateOidcProvider: !Equals [!Ref CreateGitHubOidcProvider, 'true']
@@ -246,34 +242,8 @@ Resources:
         RoleArn: !GetAtt SchedulerRole.Arn
         Input: !Sub '{"InstanceIds":["${Instance}"]}'
 
-  MonthlyBudget:
-    Type: AWS::Budgets::Budget
-    Properties:
-      Budget:
-        BudgetName: th-clover-monthly
-        BudgetType: COST
-        TimeUnit: MONTHLY
-        BudgetLimit:
-          Amount: !Ref MonthlyBudgetUsd
-          Unit: USD
-        CostTypes:
-          # Count usage even when account credits pay for it.
-          IncludeCredit: false
-      NotificationsWithSubscribers:
-        - Notification:
-            NotificationType: ACTUAL
-            ComparisonOperator: GREATER_THAN
-            Threshold: 80
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - {SubscriptionType: EMAIL, Address: !Ref AlertEmail}
-        - Notification:
-            NotificationType: FORECASTED
-            ComparisonOperator: GREATER_THAN
-            Threshold: 100
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - {SubscriptionType: EMAIL, Address: !Ref AlertEmail}
+  # The AWS Budget is created by infrastructure/budget.sh: this region's CloudFormation
+  # rejects AWS::Budgets::Budget ("Unrecognized resource types").
 
   # ---------------------------------------------------------------- deployment without SSH
   DeployDocument:
